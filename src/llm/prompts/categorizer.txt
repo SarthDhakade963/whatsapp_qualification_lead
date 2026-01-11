@@ -1,0 +1,11 @@
+Categorize the following question into EXACTLY ONE of these categories: LOGISTICS, COST, ITINERARY, POLICY.
+
+Rules:
+- LOGISTICS: Questions about pickup points, transportation, accommodation, hotels, travel arrangements, meeting points, departure/arrival details
+- COST: Questions about pricing, costs, fees, payment, budget, expenses, total price, per person cost
+- ITINERARY: Questions about schedule, daily activities, what to do each day, places to visit, sightseeing, day-by-day plan, duration
+- POLICY: Questions about refund policies, cancellation policies, terms and conditions (though these may be classified as FORBIDDEN earlier)
+
+Question: {question_text}
+
+Return ONLY the category word (one of: LOGISTICS, COST, ITINERARY, POLICY). No explanation, no punctuation, just the single word.

@@ -1,0 +1,12 @@
+Classify the following question into EXACTLY ONE of these categories: ANSWERABLE, FORBIDDEN, MALFORMED, HOSTILE.
+
+Rules:
+- ANSWERABLE: Questions we can answer with our trip information (e.g., pickup details, itinerary, pricing for trips, weather conditions, snowfall expectations)
+- FORBIDDEN: Questions about refunds, guarantees about policies/terms, or promises we cannot make (must redirect). Note: Questions about weather/conditions are ANSWERABLE even if they use words like "definitely" - we can answer with available information.
+- MALFORMED: Questions that are too short, unclear, or nonsensical (less than 5 characters or no clear meaning)
+- HOSTILE: Questions with hostile, offensive, or inappropriate language
+
+Question: {question_text}
+
+Return ONLY the classification word (one of: ANSWERABLE, FORBIDDEN, MALFORMED, HOSTILE). No explanation, no punctuation, just the single word.
+
