@@ -103,6 +103,24 @@ The system uses a `ConversationWorkflowState` TypedDict that includes:
 - Google Gemini API key
 - (Optional) LangSmith API key for tracing
 
+### Getting API Keys
+
+**Google Gemini API Key (Required):**
+
+1. Visit [Google AI Studio](https://makersuite.google.com/app/apikey) or [Google Cloud Console](https://console.cloud.google.com/)
+2. Sign in with your Google account
+3. Navigate to API Keys section
+4. Click "Create API Key" or "Get API Key"
+5. Copy the generated key
+
+**LangSmith API Key (Optional, for tracing):**
+
+1. Visit [LangSmith](https://smith.langchain.com/)
+2. Sign up or log in
+3. Go to Settings → API Keys
+4. Create a new API key
+5. Copy the key and workspace ID (found in your account settings)
+
 ### Setup
 
 1. **Clone the repository**
@@ -112,13 +130,30 @@ The system uses a `ConversationWorkflowState` TypedDict that includes:
    cd "Whatsapp Lead Qualification"
    ```
 
-2. **Install dependencies**
+2. **Create and activate virtual environment**
 
    ```bash
-   pip install -r requirements.txt
+   # Create virtual environment
+   python -m venv venv
+
+   # Activate virtual environment
+   # On Windows (PowerShell)
+   .\venv\Scripts\Activate.ps1
+   # On Windows (CMD)
+   venv\Scripts\activate.bat
+   # On Linux/Mac
+   source venv/bin/activate
    ```
 
-3. **Configure environment variables**
+   **Note:** After activation, you should see `(venv)` in your terminal prompt.
+
+3. **Install dependencies**
+
+   ```bash
+   python -m pip install -r requirements.txt
+   ```
+
+4. **Configure environment variables**
 
    Copy the example environment file and fill in your API keys:
 
@@ -144,9 +179,9 @@ The system uses a `ConversationWorkflowState` TypedDict that includes:
 
    **Note:** The `.env` file is already in `.gitignore` and will not be committed to the repository.
 
-4. **Run the application**
+5. **Run the application**
 
-   You can now run the application using any of the methods described in the [Usage](#-usage) section below.
+   Make sure your virtual environment is activated, then you can run the application using any of the methods described in the [Usage](#-usage) section below.
 
 ## ⚙️ Configuration
 
@@ -536,6 +571,57 @@ When adding new features:
 2. **New Handlers**: Add to `src/graph/nodes/non_skippable/handlers/`
 3. **New Policies**: Add to `src/domain/policies/`
 4. **New Trips**: Add files to `src/domain/trips/` (auto-discovered)
+
+## 🔧 Troubleshooting
+
+### Common Issues
+
+**"ModuleNotFoundError" or import errors:**
+
+- Make sure your virtual environment is activated (you should see `(venv)` in your terminal prompt)
+- Verify all dependencies are installed: `python -m pip install -r requirements.txt`
+- Check that you're running commands from the project root directory
+- Ensure Python 3.10+ is being used: `python --version`
+
+**Virtual environment activation issues:**
+
+- On Windows PowerShell, if you get an execution policy error, run: `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser`
+- Make sure you're in the project root directory when activating
+- Verify Python is installed correctly: `python --version`
+- On Windows, you can also use: `venv\Scripts\activate.bat` (CMD) or `.\venv\Scripts\Activate.ps1` (PowerShell)
+
+**"API key not found" or authentication errors:**
+
+- Verify your `.env` file exists in the project root
+- Check that `GEMINI_API_KEY` is set correctly (no quotes, no extra spaces)
+- Ensure the API key is valid and not expired
+- Try restarting your terminal/IDE after creating `.env`
+
+**Streamlit not starting:**
+
+- Make sure your virtual environment is activated
+- Verify Streamlit is installed: `pip install streamlit`
+- Try running: `python -m streamlit run streamlit_chat.py`
+- Check if port 8501 is already in use (try a different port: `streamlit run streamlit_chat.py --server.port 8502`)
+
+**LangSmith tracing not working:**
+
+- Verify `LANGSMITH_API_KEY` is set in `.env` (optional - not required)
+- Check that `LANGCHAIN_TRACING_V2=true` is set if using tracing
+- Ensure your API key has the correct permissions
+
+**Trip data not loading:**
+
+- Verify trip files are in `src/domain/trips/`
+- Check that trip files export `*_DATA` dictionary with `trip_id` field
+- Ensure trip files are valid Python syntax (no syntax errors)
+- Check console for any import errors
+
+**"No space left on device" errors:**
+
+- Clean up Python cache: Remove `__pycache__` directories
+- Free up disk space on your system
+- Clean git objects if using git: `git gc --prune=now`
 
 ## 📄 License
 

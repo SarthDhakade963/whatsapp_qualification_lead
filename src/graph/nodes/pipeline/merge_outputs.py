@@ -1,4 +1,5 @@
 from typing import TypedDict, Dict, Any
+import re
 from graph.state import MergedOutput
 from utils.state_adapter import get_state_value, to_dict
 from utils.behaviors import check_decision_confirmation, check_call_request
@@ -15,9 +16,48 @@ def merge_outputs(state: Dict[str, Any]) -> Dict[str, Any]:
     
     if raw_text:
         text_lower = raw_text.lower()
-        # Detect booking confirmation keywords
-        booking_keywords = ["booked", "just booked", "i booked", "i've booked", "booked it", "done booking", "completed booking", "booking is confirmed", "payment is done"]
-        has_booking_confirmation = any(keyword in text_lower for keyword in booking_keywords)
+        
+        # Check if it's a QUESTION (should NOT trigger booking confirmation)
+        question_patterns = [
+            r'\b(what|how|when|where|why|which|who)\s+',
+            r'\b(can\s+you|could\s+you|will\s+you|would\s+you|should\s+i|can\s+i|will\s+i|would\s+i)\s+',
+            r'\b(tell\s+me|explain|describe|share|show)\s+',
+            r'\bis\s+there|are\s+there|do\s+you|does\s+it',
+            r'\?\s*$',  # Ends with question mark
+        ]
+        is_question = any(re.search(pattern, text_lower) for pattern in question_patterns)
+        
+        # Check if it's a HYPOTHETICAL question (should NOT trigger booking confirmation)
+        hypothetical_patterns = [
+            r'\bwhat\s+if\b',
+            r'\bif\s+i\b',
+            r'\bwill\s+i\s+get\b',
+            r'\bwould\s+i\s+get\b',
+            r'\bcan\s+i\s+get\b',
+            r'\bshould\s+i\s+get\b',
+            r'\bif\s+i\s+book\b',
+            r'\bwhen\s+i\s+book\b',
+            r'\bafter\s+i\s+book\b',
+        ]
+        is_hypothetical = any(re.search(pattern, text_lower) for pattern in hypothetical_patterns)
+        
+        # Only check for actual booking confirmation if it's NOT a question and NOT hypothetical
+        has_booking_confirmation = False
+        if not is_question and not is_hypothetical:
+            # Patterns that indicate ACTUAL booking (past tense, completed actions, statements)
+            actual_booking_patterns = [
+                r'\b(i|i\'ve|i have)\s+(just\s+)?booked\b',
+                r'\bjust\s+booked\b',
+                r'\bbooked\s+(it|the\s+trip|the\s+package)\b',
+                r'\bdone\s+booking\b',
+                r'\bcompleted\s+booking\b',
+                r'\bbooking\s+is\s+confirmed\b',
+                r'\bpayment\s+is\s+done\b',
+                r'\bpayment\s+completed\b',
+                r'\bi\s+paid\b',
+                r'\bpayment\s+made\b',
+            ]
+            has_booking_confirmation = any(re.search(pattern, text_lower) for pattern in actual_booking_patterns)
         
         # Detect concern/complaint keywords
         concern_keywords = [
