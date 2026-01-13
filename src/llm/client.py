@@ -9,7 +9,7 @@ os.environ.setdefault("TRANSFORMERS_NO_TORCH", "1")
 from langsmith import traceable
 
 from app.settings import Settings
-from llm.prompts import CLASSIFIER_PROMPT, PLANNER_PROMPT, COMPOSER_PROMPT, CATEGORIZER_PROMPT, EXTRACTOR_PROMPT
+from llm.prompts import CLASSIFIER_PROMPT, PLANNER_PROMPT, COMPOSER_PROMPT, CATEGORIZER_PROMPT, EXTRACTOR_PROMPT, INTENT_DETECTOR_PROMPT
 
 # Lazy imports to avoid loading torch/transformers if not needed
 # Catch all exceptions including OSError from torch DLL loading on Windows
@@ -81,6 +81,7 @@ class LLMClient:
         self.composer_prompt = ChatPromptTemplate.from_template(COMPOSER_PROMPT)
         self.categorizer_prompt = ChatPromptTemplate.from_template(CATEGORIZER_PROMPT)
         self.extractor_prompt = ChatPromptTemplate.from_template(EXTRACTOR_PROMPT)
+        self.intent_detector_prompt = ChatPromptTemplate.from_template(INTENT_DETECTOR_PROMPT)
         
         # Initialize parsers
         self.str_parser = StrOutputParser()
@@ -320,3 +321,33 @@ class LLMClient:
                 answer_parts.append(facts)
         
         return " ".join(answer_parts) if answer_parts else "I'm here to help. Could you provide more details about your question?"
+    
+    @traceable(name="detect_intent")
+    def detect_intent(self, question_text: str) -> str:
+        """Detect if question is about SEAT_AVAILABILITY, DATES, or OTHER using LLM."""
+        self.call_history.append(("detect_intent", question_text))
+        
+        try:
+            # Use Gemini for intent detection
+            chain = self.intent_detector_prompt | self.llm | self.str_parser
+            result = chain.invoke({"question_text": question_text})
+            
+            # Parse and validate result
+            intent = result.strip().upper()
+            valid_intents = ["SEAT_AVAILABILITY", "DATES", "OTHER"]
+            
+            # Check if result matches valid intents
+            if intent in valid_intents:
+                return intent
+            
+            # Extract intent if it's part of a longer response
+            for valid_intent in valid_intents:
+                if valid_intent in intent:
+                    return valid_intent
+                    
+        except Exception as e:
+            # Fallback on error
+            print(f"LLM intent detection error: {e}, using fallback logic")
+        
+        # Fallback: return OTHER if LLM fails
+        return "OTHER"

@@ -85,9 +85,9 @@ def pricing_handler(state: Dict[str, Any]) -> Dict[str, Any]:
         # If no facts found, provide fallback message
         if not facts:
             if trip_data:
-                facts = ["Pricing details are available upon request."]
+                facts = ["I'd be happy to share pricing details. Would you like to know about the trip cost, payment options, or booking information?"]
             else:
-                facts = ["I don't have information about a trip to that destination. Could you clarify which trip you're asking about (e.g., Kashmir, Andaman)?"]
+                facts = ["I'd be happy to share that information. Could you clarify which trip you're asking about (e.g., Kashmir, Andaman)?"]
         
         # Create handler output (as dict)
         output = {

@@ -71,9 +71,9 @@ def logistics_handler(state: Dict[str, Any]) -> Dict[str, Any]:
         # If no facts found, provide fallback message
         if not facts:
             if trip_data:
-                facts = ["Logistics details are available upon booking confirmation."]
+                facts = ["I'd be happy to share logistics details. Would you like to know about pickup points, meeting locations, or transportation arrangements?"]
             else:
-                facts = ["I don't have information about a trip to that destination. Could you clarify which trip you're asking about (e.g., Kashmir, Andaman)?"]
+                facts = ["I'd be happy to share that information. Could you clarify which trip you're asking about (e.g., Kashmir, Andaman)?"]
         
         # Create handler output (as dict)
         output = {

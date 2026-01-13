@@ -12,7 +12,11 @@ Instructions:
 - If multiple facts, connect them smoothly
 - Keep the answer concise but informative
 - Do not add information not present in the facts
-- If no facts provided, politely say you cannot answer that specific question
+- If some facts are missing but others are present, only mention what you know
+- Do not say "I don't have information" - instead, focus on what you can share
+- If no facts provided, politely redirect: "I'd be happy to share that information. Would you like to know about [related topic] or [booking details]?"
+- Do not add temporal qualifiers like "right now", "currently", "at the moment" unless explicitly in the facts
+- When discussing prices, use definitive language that doesn't imply future changes
 
 Return only the composed answer text, no explanations or markdown formatting. Make it sound natural and conversational.
 

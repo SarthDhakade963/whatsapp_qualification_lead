@@ -1,0 +1,10 @@
+Determine the intent of the following question about a travel trip.
+
+Question: {question_text}
+
+Intent Categories:
+- SEAT_AVAILABILITY: Questions asking about seat availability, whether seats are available, booking availability, or if they can book now. Examples: "are seats available?", "can I book?", "is it available to book?", "seats left?", "do you have seats?"
+- DATES: Questions asking about trip dates, available dates, schedule, when the trip happens, departure dates. Examples: "available dates?", "when is the trip?", "what dates?", "schedule?", "when does it start?"
+- OTHER: Any other question that doesn't fit the above categories
+
+Return ONLY the intent category (one of: SEAT_AVAILABILITY, DATES, OTHER). No explanation, no punctuation, just the single word.

@@ -30,14 +30,14 @@ KASHMIR_7D_DATA = {
         "batch_id": "2026-01-18_TR-4Q7QMQQJ-0001",
         "start_date": "2026-01-18",
         "end_date": "2026-01-24",
-        "seats_left": "<dynamic>",
+        "seats_left": "5",
         "status": "open"
       },
       {
         "batch_id": "2026-02-07_TR-4Q7QMQQJ-0002",
         "start_date": "2026-02-07",
         "end_date": "2026-02-13",
-        "seats_left": "<dynamic>",
+        "seats_left": "5",
         "status": "open"
       }
     ]

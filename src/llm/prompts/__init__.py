@@ -74,4 +74,15 @@ Instructions:
 
 Return ONLY a JSON array of fact strings, no explanations. Example: ["Fact 1", "Fact 2"]"""
 
-__all__ = ["CLASSIFIER_PROMPT", "PLANNER_PROMPT", "COMPOSER_PROMPT", "CATEGORIZER_PROMPT", "EXTRACTOR_PROMPT"]
+INTENT_DETECTOR_PROMPT = _load_prompt("intent_detector.txt") or """Determine the intent of the following question about a travel trip.
+
+Question: {question_text}
+
+Intent Categories:
+- SEAT_AVAILABILITY: Questions asking about seat availability, whether seats are available, booking availability, or if they can book now
+- DATES: Questions asking about trip dates, available dates, schedule, when the trip happens, departure dates
+- OTHER: Any other question that doesn't fit the above categories
+
+Return ONLY the intent category (one of: SEAT_AVAILABILITY, DATES, OTHER). No explanation, just the word."""
+
+__all__ = ["CLASSIFIER_PROMPT", "PLANNER_PROMPT", "COMPOSER_PROMPT", "CATEGORIZER_PROMPT", "EXTRACTOR_PROMPT", "INTENT_DETECTOR_PROMPT"]

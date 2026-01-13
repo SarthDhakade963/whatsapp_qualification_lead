@@ -14,4 +14,11 @@ Instructions:
 - Be specific and accurate
 - Use natural language for facts (not just raw data values)
 
+Common fields to look for:
+- Duration: Check "duration" object (days/nights)
+- Accommodation: Check "accommodation" object (stays, room_sharing, type)
+- Pickup/Meeting point: Check "logistics" object (meeting_point, pickup)
+- Itinerary: Check "itinerary" array
+- Pricing: Check "pricing" object
+
 Return ONLY a JSON array of fact strings, no explanations. Example: ["Fact 1", "Fact 2"]

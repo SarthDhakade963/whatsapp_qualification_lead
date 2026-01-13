@@ -2,6 +2,7 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
 import re
+from llm.client import LLMClient
 
 
 def extract_date_from_text(text: str) -> Optional[str]:
@@ -101,6 +102,7 @@ def find_next_available_date(batches: list, after_date: Optional[str] = None) ->
 def check_seat_availability_behavior(trip_data: Dict[str, Any], question_text: str) -> Optional[str]:
     """
     Check seat availability for a trip based on the question.
+    Hybrid approach: Fast pattern matching first, LLM only for ambiguous cases.
     Returns appropriate response message or None if not a seat availability question.
     """
     if not trip_data or not question_text:
@@ -108,12 +110,54 @@ def check_seat_availability_behavior(trip_data: Dict[str, Any], question_text: s
     
     text_lower = question_text.lower()
     
-    # Check if question is about seat availability
-    seat_keywords = ["seat", "seats", "availability", "available", "book", "booking"]
-    if not any(keyword in text_lower for keyword in seat_keywords):
-        return None
+    # STEP 1: Fast pattern matching for CLEAR cases (no LLM needed)
+    # This handles ~90% of cases instantly without LLM calls
     
-    # Get batches from trip data
+    # Clear date question patterns - return None immediately (not seat availability)
+    date_patterns = [
+        r'\b(available\s+)?dates?\b',
+        r'\bwhat\s+dates?\b',
+        r'\bwhen\s+(is|does|will)\s+(the\s+)?(trip|journey|tour)\b',
+        r'\bwhen\s+does\s+it\s+(start|begin)\b',
+        r'\bschedule\b',
+        r'\btiming\b',
+        r'\bdeparture\s+date\b',
+        r'\bstart\s+date\b',
+        r'\bwhich\s+dates?\b',
+    ]
+    if any(re.search(pattern, text_lower) for pattern in date_patterns):
+        return None  # Clearly a date question, skip LLM and batch checking
+    
+    # Clear seat availability patterns - proceed directly to batch checking
+    clear_seat_patterns = [
+        r'\b(seats?|seat\s+availability)\s+(available|left|remaining)\b',
+        r'\b(are|is)\s+there\s+seats?\b',
+        r'\b(do|does)\s+(you|we)\s+have\s+seats?\b',
+        r'\bcan\s+i\s+book\b',
+        r'\bis\s+it\s+available\s+to\s+book\b',
+        r'\bseats?\s+left\b',
+        r'\bseats?\s+remaining\b',
+        r'\bhow\s+many\s+seats?\s+(are\s+)?(left|available|remaining)\b',
+    ]
+    is_clear_seat_question = any(re.search(pattern, text_lower) for pattern in clear_seat_patterns)
+    
+    # STEP 2: For ambiguous cases, use LLM to disambiguate
+    if not is_clear_seat_question:
+        # Check if it might be ambiguous (contains relevant keywords but unclear context)
+        ambiguous_keywords = ["available", "book", "booking"]
+        has_ambiguous_keywords = any(keyword in text_lower for keyword in ambiguous_keywords)
+        
+        if has_ambiguous_keywords:
+            # Use LLM to disambiguate (only for ambiguous cases)
+            llm = LLMClient()
+            intent = llm.detect_intent(question_text)
+            if intent != "SEAT_AVAILABILITY":
+                return None
+        else:
+            # No relevant keywords at all, definitely not seat availability
+            return None
+    
+    # STEP 3: Proceed with batch checking (same logic for both clear and LLM-confirmed cases)
     batches = trip_data.get("batches", {})
     available_batches = batches.get("available_batches", [])
     
