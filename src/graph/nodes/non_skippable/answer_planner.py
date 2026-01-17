@@ -6,12 +6,8 @@ from utils.ids import generate_block_id
 
 def answer_planner(state: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Create answer plan grouping questions by handler using deterministic logic.
-    Groups questions by category and maps to handlers.
+    Create answer plan grouping questions by handler.
     Only modifies: answerable_processing.answer_plan
-    
-    Note: Uses deterministic grouping logic (no LLM call) for optimal latency.
-    This matches the fallback logic previously used when LLM planning failed.
     """
     answerable_processing = get_state_value(state, "answerable_processing")
     if not answerable_processing:
@@ -23,7 +19,6 @@ def answer_planner(state: Dict[str, Any]) -> Dict[str, Any]:
     if not structured_questions:
         return {}
     
-    # DETERMINISTIC: Group questions by category
     category_groups: Dict[str, List[str]] = {}
     
     for q in structured_questions:
@@ -34,7 +29,6 @@ def answer_planner(state: Dict[str, Any]) -> Dict[str, Any]:
         if q_id:
             category_groups[cat].append(q_id)
     
-    # DETERMINISTIC: Map category to handler and create blocks
     blocks = []
     handler_map = {
         "LOGISTICS": "logistics_handler",
@@ -54,12 +48,10 @@ def answer_planner(state: Dict[str, Any]) -> Dict[str, Any]:
             "answer_style": "HIGH_LEVEL" if len(question_ids) == 1 else "DETAILED"
         })
     
-    # Keep as dict for compatibility
     answer_plan = {
         "answer_blocks": blocks
     }
     
-    # Update answerable_processing
     answerable_dict = answerable_dict.copy()
     answerable_dict["answer_plan"] = answer_plan
     

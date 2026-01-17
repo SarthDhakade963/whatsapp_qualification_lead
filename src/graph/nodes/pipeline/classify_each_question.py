@@ -19,7 +19,6 @@ def classify_each_question(state: Dict[str, Any]) -> Dict[str, Any]:
         questions_dict["classified"] = []
         return {"questions": questions_dict}
     
-    # Extract question texts and IDs for batch processing
     question_texts = []
     question_ids = []
     for atomic_q in atomic_questions:
@@ -29,20 +28,18 @@ def classify_each_question(state: Dict[str, Any]) -> Dict[str, Any]:
             question_texts.append(question_text)
             question_ids.append(question_id)
     
-    # BATCH: Classify all questions in a single LLM call
     if question_texts:
         batch_results = llm.classify_questions_batch(question_texts)
     else:
         batch_results = {}
     
-    # Map results back to question IDs in order
     classified = []
     for i, question_id in enumerate(question_ids):
         question_text = question_texts[i] if i < len(question_texts) else ""
-        classification = batch_results.get(question_text, "ANSWERABLE")  # Fallback to ANSWERABLE if not found
+        classification = batch_results.get(question_text, "ANSWERABLE")
         classified.append({
             "id": question_id,
-            "class": classification  # Use "class" not "class_" for alias compatibility
+            "class": classification
         })
     
     questions_dict["classified"] = classified
