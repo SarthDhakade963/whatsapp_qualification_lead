@@ -9,7 +9,10 @@ def logistics_handler(state: Dict[str, Any]) -> Dict[str, Any]:
     """
     Handle logistics questions using LLM-based fact extraction.
     Returns facts only.
-    Updates answerable_processing.handler_outputs directly (for conditional/sequential execution)
+    Updates answerable_processing.handler_outputs directly.
+    
+    Note: Executes in parallel with other handlers. If no logistics blocks exist,
+    returns {} immediately (early exit) for optimal performance.
     """
     answerable_processing = state.get("answerable_processing")
     if not answerable_processing or not answerable_processing.get("answer_plan"):
@@ -51,22 +54,46 @@ def logistics_handler(state: Dict[str, Any]) -> Dict[str, Any]:
             if isinstance(q, dict) and q.get("id") in question_ids
         ]
         
-        # Extract facts using LLM
+        # Separate questions by processing type
+        facts_map = {}  # Map question_text to facts list
+        llm_questions = []  # Questions that need LLM extraction
+        
+        for q in questions:
+            question_text = q.get("text", "") if isinstance(q, dict) else getattr(q, "text", "")
+            if not question_text:
+                continue
+            
+            # Check for seat availability first
+            seat_availability_response = check_seat_availability(trip_data, question_text)
+            if seat_availability_response:
+                facts_map[question_text] = [seat_availability_response]
+                continue
+            
+            # Check for empathetic responses
+            empathetic_response = check_empathetic_response(question_text)
+            if empathetic_response:
+                facts_map[question_text] = [empathetic_response]
+                continue
+            
+            # Add to LLM batch
+            llm_questions.append(question_text)
+        
+        # BATCH: Extract facts for all LLM questions in a single call
+        if llm_questions:
+            batch_results = llm.extract_facts_batch(llm_questions, trip_data)
+            
+            # Map batch results back to questions
+            for q_text, q_facts in batch_results.items():
+                if q_text not in facts_map:
+                    facts_map[q_text] = []
+                facts_map[q_text].extend(q_facts)
+        
+        # Combine all facts from all questions
         facts = []
         for q in questions:
             question_text = q.get("text", "") if isinstance(q, dict) else getattr(q, "text", "")
-            if question_text:
-                # Check for seat availability first
-                seat_availability_response = check_seat_availability(trip_data, question_text)
-                if seat_availability_response:
-                    facts.append(seat_availability_response)
-                # Check for empathetic responses
-                elif check_empathetic_response(question_text):
-                    empathetic_response = check_empathetic_response(question_text)
-                    facts.append(empathetic_response)
-                else:
-                    extracted_facts = llm.extract_facts(question_text, trip_data)
-                    facts.extend(extracted_facts)
+            if question_text and question_text in facts_map:
+                facts.extend(facts_map[question_text])
         
         # If no facts found, provide fallback message
         if not facts:

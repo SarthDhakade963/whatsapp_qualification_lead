@@ -71,6 +71,7 @@ def build_graph() -> StateGraph:
     workflow.add_node("normalize_and_structure", normalize_and_structure)
     workflow.add_node("resolve_trip_context", resolve_trip_context)
     workflow.add_node("answer_planner", answer_planner)
+    workflow.add_node("handlers_start", noop_node)  # PARALLEL: Fan-out point for handlers
     workflow.add_node("logistics_handler", logistics_handler)
     workflow.add_node("pricing_handler", pricing_handler)
     workflow.add_node("itinerary_handler", itinerary_handler)
@@ -122,9 +123,9 @@ def build_graph() -> StateGraph:
     workflow.add_edge("normalize_and_structure", "resolve_trip_context")
     workflow.add_edge("resolve_trip_context", "answer_planner")
     
-    # After answer_planner, conditionally route to needed handlers (sequential)
+    # After answer_planner, route to handlers_start if handlers needed, otherwise to compose
     def route_to_handlers(state: Dict[str, Any]) -> str:
-        """Route to first needed handler based on answer plan, or compose if none needed."""
+        """Route to handlers_start if handlers are needed, or compose_answer if none needed."""
         answerable_processing = state.get("answerable_processing")
         if not answerable_processing:
             return "compose_answer"
@@ -135,7 +136,7 @@ def build_graph() -> StateGraph:
         if not answer_blocks:
             return "compose_answer"
         
-        # Determine which handlers are needed
+        # Determine if any handlers are needed
         handlers_needed = set()
         for block in answer_blocks:
             handler = block.get("handler", "")
@@ -145,102 +146,37 @@ def build_graph() -> StateGraph:
         if not handlers_needed:
             return "compose_answer"
         
-        # Route to first handler in priority order (logistics -> pricing -> itinerary)
-        if "logistics_handler" in handlers_needed:
-            return "logistics_handler"
-        elif "pricing_handler" in handlers_needed:
-            return "pricing_handler"
-        elif "itinerary_handler" in handlers_needed:
-            return "itinerary_handler"
-        else:
-            return "compose_answer"
+        # PARALLEL: Route to handlers_start to fan-out to all handlers
+        return "handlers_start"
     
     workflow.add_conditional_edges(
         "answer_planner",
         route_to_handlers,
         {
-            "logistics_handler": "logistics_handler",
-            "pricing_handler": "pricing_handler",
-            "itinerary_handler": "itinerary_handler",
+            "handlers_start": "handlers_start",
             "compose_answer": "compose_answer"
         }
     )
     
-    # Sequential flow: each handler routes to next needed handler or merge when done
-    def route_next_handler(state: Dict[str, Any]) -> str:
-        """Route to next handler in sequence or merge_handler_outputs when all handlers are done."""
-        answerable_processing = state.get("answerable_processing")
-        if not answerable_processing:
-            return "merge_handler_outputs"
-        
-        answer_plan = answerable_processing.get("answer_plan", {})
-        answer_blocks = answer_plan.get("answer_blocks", [])
-        handler_outputs = answerable_processing.get("handler_outputs", [])
-        
-        # Determine which handlers are needed (preserve order from answer_blocks)
-        needed_handlers = []
-        for block in answer_blocks:
-            handler = block.get("handler", "")
-            if handler in ["logistics_handler", "pricing_handler", "itinerary_handler"]:
-                if handler not in needed_handlers:
-                    needed_handlers.append(handler)
-        
-        # Determine which handlers have already executed by matching block_ids
-        executed_handlers = set()
-        if handler_outputs:
-            output_block_ids = set()
-            for output in handler_outputs:
-                block_id = output.get("block_id", "") if isinstance(output, dict) else getattr(output, "block_id", "")
-                if block_id:
-                    output_block_ids.add(block_id)
-            
-            # Match executed blocks to their handlers
-            for block in answer_blocks:
-                block_id = block.get("block_id", "")
-                if block_id in output_block_ids:
-                    handler = block.get("handler", "")
-                    if handler:
-                        executed_handlers.add(handler)
-        
-        # Find next handler to execute in priority order
-        handler_priority = ["logistics_handler", "pricing_handler", "itinerary_handler"]
-        for handler in handler_priority:
-            if handler in needed_handlers and handler not in executed_handlers:
-                return handler
-        
-        # All handlers have executed, go to merge then compose
-        return "merge_handler_outputs"
+    # APPROACH 1: PARALLEL EXECUTION WITH EARLY EXIT
+    # =============================================
+    # Fan-out: All handlers execute in parallel from handlers_start
+    # - Even handlers without work run (for true parallelism)
+    # - Each handler checks for blocks and exits early if none exist (microseconds overhead)
+    # - This approach prioritizes simplicity and true parallelism over avoiding function calls
+    # - Overhead is negligible (~0.0003s) compared to LLM latency (~1000ms)
+    workflow.add_edge("handlers_start", "logistics_handler")
+    workflow.add_edge("handlers_start", "pricing_handler")
+    workflow.add_edge("handlers_start", "itinerary_handler")
     
-    # Each handler routes to next handler or merge_handler_outputs when all done
-    workflow.add_conditional_edges(
-        "logistics_handler",
-        route_next_handler,
-        {
-            "logistics_handler": "logistics_handler",
-            "pricing_handler": "pricing_handler",
-            "itinerary_handler": "itinerary_handler",
-            "merge_handler_outputs": "merge_handler_outputs"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "pricing_handler",
-        route_next_handler,
-        {
-            "pricing_handler": "pricing_handler",
-            "itinerary_handler": "itinerary_handler",
-            "merge_handler_outputs": "merge_handler_outputs"
-        }
-    )
-    
-    workflow.add_conditional_edges(
-        "itinerary_handler",
-        route_next_handler,
-        {
-            "itinerary_handler": "itinerary_handler",
-            "merge_handler_outputs": "merge_handler_outputs"
-        }
-    )
+    # Fan-in (Barrier): Each handler routes directly to merge_handler_outputs
+    # - merge_handler_outputs waits for ALL handlers to complete (barrier pattern)
+    # - Handlers with work process and update state
+    # - Handlers without work return {} immediately (early exit)
+    # - LangGraph automatically merges state updates from parallel handlers
+    workflow.add_edge("logistics_handler", "merge_handler_outputs")
+    workflow.add_edge("pricing_handler", "merge_handler_outputs")
+    workflow.add_edge("itinerary_handler", "merge_handler_outputs")
     
     # merge_handler_outputs is a pass-through (handlers update state directly)
     # Routes to compose_answer after all handlers complete

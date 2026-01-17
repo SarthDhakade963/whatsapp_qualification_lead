@@ -31,18 +31,33 @@ def normalize_and_structure(state: Dict[str, Any]) -> Dict[str, Any]:
     raw_text = input_obj.get("raw_text") if isinstance(input_obj, dict) else getattr(input_obj, "raw_text", "")
     normalized_text = normalize_text(raw_text)
     
-    # Structure each answerable question
-    structured = []
+    # Extract question texts and IDs for batch categorization
+    question_texts = []
+    question_map = []  # Maps index to (q_id, q_text) tuple
+    
     for q_id in answerable_ids:
         atomic_q = atomic_map.get(q_id)
         if atomic_q:
             q_text = atomic_q.get("text") if isinstance(atomic_q, dict) else getattr(atomic_q, "text", "")
-            category = llm.categorize_question(q_text)
-            structured.append({
-                "id": q_id,
-                "category": category,
-                "text": q_text
-            })
+            if q_text:
+                question_texts.append(q_text)
+                question_map.append((q_id, q_text))
+    
+    # BATCH: Categorize all questions in a single LLM call
+    if question_texts:
+        batch_results = llm.categorize_questions_batch(question_texts)
+    else:
+        batch_results = {}
+    
+    # Map results back to question IDs
+    structured = []
+    for q_id, q_text in question_map:
+        category = batch_results.get(q_text, "LOGISTICS")  # Fallback to LOGISTICS if not found
+        structured.append({
+            "id": q_id,
+            "category": category,
+            "text": q_text
+        })
     
     # Initialize answerable_processing if needed (as dict)
     answerable_processing = get_state_value(state, "answerable_processing")

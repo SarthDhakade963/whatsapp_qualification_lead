@@ -178,6 +178,59 @@ def combine_handler_outputs(current: List[Dict[str, Any]], new: List[Dict[str, A
     return current + new
 
 
+def combine_answerable_processing(
+    current: Optional[AnswerableProcessing], 
+    new: Optional[AnswerableProcessing]
+) -> Optional[AnswerableProcessing]:
+    """Reducer to merge answerable_processing from parallel handler execution.
+    
+    Handlers update the entire object, so we need to merge by:
+    1. Combining handler_outputs lists (avoiding duplicates by block_id)
+    2. Preferring new values for other fields (non-conflicting updates)
+    """
+    if not current:
+        return new
+    if not new:
+        return current
+    
+    # Convert to dict if Pydantic models
+    current_dict = current.model_dump() if hasattr(current, 'model_dump') else (current if isinstance(current, dict) else {})
+    new_dict = new.model_dump() if hasattr(new, 'model_dump') else (new if isinstance(new, dict) else {})
+    
+    # Get handler_outputs from both
+    current_outputs = current_dict.get("handler_outputs", []) or []
+    new_outputs = new_dict.get("handler_outputs", []) or []
+    
+    # Combine outputs, avoiding duplicates by block_id
+    seen_block_ids = set()
+    combined_outputs = []
+    
+    # Add current outputs
+    for output in current_outputs:
+        block_id = output.get("block_id") if isinstance(output, dict) else getattr(output, "block_id", None)
+        if block_id and block_id not in seen_block_ids:
+            combined_outputs.append(output)
+            seen_block_ids.add(block_id)
+    
+    # Add new outputs (only if not already present)
+    for output in new_outputs:
+        block_id = output.get("block_id") if isinstance(output, dict) else getattr(output, "block_id", None)
+        if block_id and block_id not in seen_block_ids:
+            combined_outputs.append(output)
+            seen_block_ids.add(block_id)
+        elif not block_id:
+            # If no block_id, just add it (shouldn't happen but be safe)
+            combined_outputs.append(output)
+    
+    # Merge dictionaries - prefer new for non-list fields
+    merged_dict = current_dict.copy()
+    merged_dict.update(new_dict)
+    merged_dict["handler_outputs"] = combined_outputs
+    
+    # Return as dict (handlers work with dicts, LangGraph will handle conversion if needed)
+    return merged_dict
+
+
 class ConversationWorkflowState(TypedDict, total=False):
     """LangGraph state - TypedDict for conditional handler execution."""
     # Entry
@@ -187,7 +240,8 @@ class ConversationWorkflowState(TypedDict, total=False):
     questions: Questions
 
     # Answerable branch (optional for early exit)
-    answerable_processing: Optional[AnswerableProcessing]
+    # Annotated with reducer for parallel handler execution
+    answerable_processing: Annotated[Optional[AnswerableProcessing], combine_answerable_processing]
 
     # Skippable branch
     skippable_actions: Optional[SkippableActions]
@@ -202,4 +256,3 @@ class ConversationWorkflowState(TypedDict, total=False):
     
     # Authoritative conversation state (decisions and metadata)
     conversation_state: Optional[Dict[str, Any]]  # Conversation state with focus, intent, risk, etc.
-

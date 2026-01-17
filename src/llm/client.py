@@ -125,6 +125,114 @@ class LLMClient:
         else:
             return "ANSWERABLE"
     
+    @traceable(name="classify_questions_batch")
+    def classify_questions_batch(self, questions: List[str]) -> Dict[str, str]:
+        """Classify multiple questions in a single LLM call for better performance.
+        
+        Args:
+            questions: List of question texts to classify
+            
+        Returns:
+            Dictionary mapping each question to its classification
+        """
+        if not questions:
+            return {}
+        
+        # For single question, use existing method
+        if len(questions) == 1:
+            classification = self.classify_question(questions[0])
+            return {questions[0]: classification}
+        
+        self.call_history.append(("classify_batch", questions))
+        
+        try:
+            # Create batch prompt
+            questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
+            
+            batch_prompt_template = """Classify each question into EXACTLY ONE of these categories: ANSWERABLE, FORBIDDEN, MALFORMED, HOSTILE.
+
+Rules:
+- ANSWERABLE: Questions we can answer with our trip information (e.g., pickup details, itinerary, pricing for trips, weather conditions, snowfall expectations)
+- FORBIDDEN: Questions about refunds, guarantees about policies/terms, or promises we cannot make (must redirect). Note: Questions about weather/conditions are ANSWERABLE even if they use words like "definitely" - we can answer with available information.
+- MALFORMED: Questions that are too short, unclear, or nonsensical (less than 5 characters or no clear meaning)
+- HOSTILE: Questions with hostile, offensive, or inappropriate language
+
+Questions:
+{questions_text}
+
+Return ONLY a JSON object mapping each question to its classification.
+Format: {{"question1": "ANSWERABLE", "question2": "FORBIDDEN"}}
+Return ONLY the JSON object, no explanations."""
+            
+            batch_prompt = ChatPromptTemplate.from_template(batch_prompt_template)
+            chain = batch_prompt | self.llm | self.json_parser
+            
+            result = chain.invoke({"questions_text": questions_text})
+            
+            # Parse result - should be a dict mapping questions to classifications
+            valid_classes = ["ANSWERABLE", "FORBIDDEN", "MALFORMED", "HOSTILE"]
+            question_to_classification = {}
+            
+            if isinstance(result, dict):
+                for q in questions:
+                    classification = None
+                    
+                    # Try exact match first
+                    if q in result:
+                        classification = result[q]
+                    else:
+                        # Try partial match (question in key or key in question)
+                        for key, value in result.items():
+                            if q == key or q in key or key in q:
+                                classification = value
+                                break
+                    
+                    # Validate and normalize classification
+                    if classification:
+                        classification = str(classification).strip().upper()
+                        # Extract valid class if it's part of a longer response
+                        if classification in valid_classes:
+                            question_to_classification[q] = classification
+                        else:
+                            for valid_class in valid_classes:
+                                if valid_class in classification:
+                                    question_to_classification[q] = valid_class
+                                    break
+                            else:
+                                # Fallback: use fallback logic for this question
+                                question_to_classification[q] = self._classify_fallback(q)
+                    else:
+                        # Fallback: use fallback logic for this question
+                        question_to_classification[q] = self._classify_fallback(q)
+                
+                return question_to_classification
+            
+            # Fallback: return classifications using fallback logic
+            return {q: self._classify_fallback(q) for q in questions}
+                    
+        except Exception as e:
+            # Fallback on error - try individual calls
+            print(f"LLM batch classification error: {e}, falling back to individual calls")
+            result = {}
+            for q in questions:
+                try:
+                    result[q] = self.classify_question(q)
+                except:
+                    result[q] = "ANSWERABLE"
+            return result
+    
+    def _classify_fallback(self, question_text: str) -> str:
+        """Fallback classification logic (same as in classify_question)."""
+        text_lower = question_text.lower()
+        if "refund" in text_lower or "guarantee" in text_lower:
+            return "FORBIDDEN"
+        elif len(question_text.strip()) < 5:
+            return "MALFORMED"
+        elif any(word in text_lower for word in ["stupid", "hate", "terrible"]):
+            return "HOSTILE"
+        else:
+            return "ANSWERABLE"
+    
     @traceable(name="categorize_question")
     def categorize_question(self, question_text: str) -> str:
         """Categorize an answerable question into LOGISTICS, COST, ITINERARY, or POLICY using LLM."""
@@ -153,6 +261,117 @@ class LLMClient:
             print(f"LLM categorization error: {e}, using fallback logic")
         
         # Fallback logic if LLM doesn't return exact match
+        text_lower = question_text.lower()
+        
+        if "pickup" in text_lower or "transport" in text_lower or "accommodation" in text_lower or "hotel" in text_lower or "meeting point" in text_lower:
+            return "LOGISTICS"
+        elif "cost" in text_lower or "price" in text_lower or "pricing" in text_lower or "payment" in text_lower or "budget" in text_lower:
+            return "COST"
+        elif "itinerary" in text_lower or "day" in text_lower or "schedule" in text_lower or "activities" in text_lower or "places to visit" in text_lower:
+            return "ITINERARY"
+        elif "policy" in text_lower or "refund" in text_lower or "cancellation" in text_lower:
+            return "POLICY"
+        else:
+            return "LOGISTICS"
+    
+    @traceable(name="categorize_questions_batch")
+    def categorize_questions_batch(self, questions: List[str]) -> Dict[str, str]:
+        """Categorize multiple questions in a single LLM call for better performance.
+        
+        Args:
+            questions: List of question texts to categorize
+            
+        Returns:
+            Dictionary mapping each question to its category
+        """
+        if not questions:
+            return {}
+        
+        # For single question, use existing method
+        if len(questions) == 1:
+            category = self.categorize_question(questions[0])
+            return {questions[0]: category}
+        
+        self.call_history.append(("categorize_batch", questions))
+        
+        try:
+            # Create batch prompt
+            questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
+            
+            batch_prompt_template = """Categorize each question into EXACTLY ONE of these categories: LOGISTICS, COST, ITINERARY, POLICY.
+
+Rules:
+- LOGISTICS: Questions about pickup points, transportation, accommodation, hotels, travel arrangements, meeting points, departure/arrival details
+- COST: Questions about pricing, costs, fees, payment, budget, expenses, total price, per person cost
+- ITINERARY: Questions about schedule, daily activities, what to do each day, places to visit, sightseeing, day-by-day plan, duration
+- POLICY: Questions about refund policies, cancellation policies, terms and conditions (though these may be classified as FORBIDDEN earlier)
+
+Questions:
+{questions_text}
+
+Return ONLY a JSON object mapping each question to its category.
+Format: {{"question1": "LOGISTICS", "question2": "COST"}}
+Return ONLY the JSON object, no explanations."""
+            
+            batch_prompt = ChatPromptTemplate.from_template(batch_prompt_template)
+            chain = batch_prompt | self.llm | self.json_parser
+            
+            result = chain.invoke({"questions_text": questions_text})
+            
+            # Parse result - should be a dict mapping questions to categories
+            valid_categories = ["LOGISTICS", "COST", "ITINERARY", "POLICY"]
+            question_to_category = {}
+            
+            if isinstance(result, dict):
+                for q in questions:
+                    category = None
+                    
+                    # Try exact match first
+                    if q in result:
+                        category = result[q]
+                    else:
+                        # Try partial match (question in key or key in question)
+                        for key, value in result.items():
+                            if q == key or q in key or key in q:
+                                category = value
+                                break
+                    
+                    # Validate and normalize category
+                    if category:
+                        category = str(category).strip().upper()
+                        # Extract valid category if it's part of a longer response
+                        if category in valid_categories:
+                            question_to_category[q] = category
+                        else:
+                            for valid_category in valid_categories:
+                                if valid_category in category:
+                                    question_to_category[q] = valid_category
+                                    break
+                            else:
+                                # Fallback: use fallback logic for this question
+                                question_to_category[q] = self._categorize_fallback(q)
+                    else:
+                        # Fallback: use fallback logic for this question
+                        question_to_category[q] = self._categorize_fallback(q)
+                
+                return question_to_category
+            
+            # Fallback: return categories using fallback logic
+            return {q: self._categorize_fallback(q) for q in questions}
+                    
+        except Exception as e:
+            # Fallback on error - try individual calls
+            print(f"LLM batch categorization error: {e}, falling back to individual calls")
+            result = {}
+            for q in questions:
+                try:
+                    result[q] = self.categorize_question(q)
+                except:
+                    result[q] = "LOGISTICS"
+            return result
+    
+    def _categorize_fallback(self, question_text: str) -> str:
+        """Fallback categorization logic (same as in categorize_question)."""
         text_lower = question_text.lower()
         
         if "pickup" in text_lower or "transport" in text_lower or "accommodation" in text_lower or "hotel" in text_lower or "meeting point" in text_lower:
@@ -288,6 +507,118 @@ class LLMClient:
             # Fallback on error
             print(f"LLM fact extraction error: {e}, using fallback logic")
             return []
+    
+    @traceable(name="extract_facts_batch")
+    def extract_facts_batch(self, questions: List[str], trip_data: Dict[str, Any]) -> Dict[str, List[str]]:
+        """Extract relevant facts for multiple questions in a single LLM call.
+        
+        Args:
+            questions: List of question texts to process
+            trip_data: Trip data dictionary
+            
+        Returns:
+            Dictionary mapping each question to its list of facts
+        """
+        if not questions:
+            return {}
+        
+        if not trip_data or not isinstance(trip_data, dict):
+            return {q: [] for q in questions}
+        
+        # For single question, use existing method
+        if len(questions) == 1:
+            facts = self.extract_facts(questions[0], trip_data)
+            return {questions[0]: facts}
+        
+        self.call_history.append(("extract_facts_batch", questions))
+        
+        try:
+            # Create batch prompt
+            questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
+            
+            batch_prompt_template = """You are a fact extraction system for a travel booking assistant.
+
+Questions:
+{questions_text}
+
+Trip Data (JSON):
+{trip_data}
+
+Instructions:
+- Extract relevant facts from the trip data for EACH question
+- Return a JSON object mapping each question to its facts
+- Format: {{"question1": ["fact1", "fact2"], "question2": ["fact1"]}}
+- Each fact should be a complete, standalone statement
+- If a question asks about something not in trip data, return an empty array for that question
+- Do not make up information not present in trip data
+- Be specific and accurate
+- Use natural language for facts (not just raw data values)
+
+Common fields to look for:
+- Duration: Check "duration" object (days/nights)
+- Accommodation: Check "accommodation" object (stays, room_sharing, type)
+- Pickup/Meeting point: Check "logistics" object (meeting_point, pickup)
+- Itinerary: Check "itinerary" array
+- Pricing: Check "pricing" object
+- Meals/Food: Check "inclusions" and "exclusions" arrays, and "itinerary" activities for meal mentions
+
+Return ONLY a JSON object mapping questions to their facts, no explanations."""
+            
+            batch_prompt = ChatPromptTemplate.from_template(batch_prompt_template)
+            chain = batch_prompt | self.llm | self.json_parser
+            
+            result = chain.invoke({
+                "questions_text": questions_text,
+                "trip_data": json.dumps(trip_data, indent=2)
+            })
+            
+            # Parse result - should be a dict mapping questions to facts
+            if isinstance(result, dict):
+                # Ensure all questions are in the result
+                question_to_facts = {}
+                result_items = list(result.items())
+                
+                for idx, q in enumerate(questions):
+                    facts = None
+                    
+                    # Try exact match first
+                    if q in result:
+                        facts = result[q]
+                    else:
+                        # Try partial match (question in key or key in question)
+                        for key, value in result_items:
+                            if q == key or q in key or key in q:
+                                facts = value
+                                break
+                        
+                        # If still not found, try by position (index)
+                        if facts is None and idx < len(result_items):
+                            facts = result_items[idx][1]
+                    
+                    # Ensure facts is a list of strings
+                    if facts is None:
+                        facts = []
+                    
+                    if isinstance(facts, list):
+                        question_to_facts[q] = [str(fact) for fact in facts if fact]
+                    else:
+                        question_to_facts[q] = [str(facts)] if facts else []
+                
+                return question_to_facts
+            
+            # Fallback: return empty for all questions
+            return {q: [] for q in questions}
+                    
+        except Exception as e:
+            # Fallback on error - try individual calls
+            print(f"LLM batch fact extraction error: {e}, falling back to individual calls")
+            result = {}
+            for q in questions:
+                try:
+                    result[q] = self.extract_facts(q, trip_data)
+                except:
+                    result[q] = []
+            return result
     
     @traceable(name="compose_answer")
     def compose_answer(self, handler_outputs: List[Dict[str, Any]], normalized_text: str) -> str:
